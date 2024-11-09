@@ -1,14 +1,63 @@
 # Importing Dependencies
 import streamlit as st
+import pandas as pd
+from google.oauth2 import service_account
+import gspread
+from dotenv import load_dotenv
+import os
+
+
+load_dotenv()
+SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
+# print(SERVICE_ACCOUNT_FILE)
+
+# Implementing google sheet integration
+def get_gspread_client():
+    credentials = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ],
+    )
+    return gspread.authorize(credentials)
 
 
 # Main Logic Page
 def playground():
     st.title("Playground")
-    st.write("Upload a file to begin.")
+    st.write("Upload a file or connect your google sheet to begin.")
 
     # File uploader
     uploaded_file = st.file_uploader("Choose a file", type=["csv", "xlsx", "txt"])
+
+    # Google Sheets selection
+    st.write("Or connect to a Google Sheet:")
+    
+    # Prompt for Google Sheets URL
+    sheet_url = st.text_input("Enter Google Sheets URL")
+    if sheet_url:
+        try:
+            # Initialize Google Sheets client
+            client = get_gspread_client()
+            # Open the Google Sheet by URL
+            sheet = client.open_by_url(sheet_url)
+            # Get list of worksheets (tabs) in the Google Sheet
+            worksheet_list = [ws.title for ws in sheet.worksheets()]
+            
+            # Select a worksheet from a dropdown
+            worksheet_name = st.selectbox("Select Worksheet", worksheet_list)
+            worksheet = sheet.worksheet(worksheet_name)
+            # Get all records from the selected worksheet as a DataFrame
+            data = worksheet.get_all_records()
+            df = pd.DataFrame(data)
+            
+            # Display data in the app
+            st.write("Data from Google Sheet:")
+            st.dataframe(df)
+        except Exception as e:
+            st.error(f"Error loading Google Sheet: {e}")
+
     
     # Display file content or provide feedback
     if uploaded_file is not None:
@@ -16,12 +65,10 @@ def playground():
         
         # Display the file contents for CSV and text files
         if uploaded_file.name.endswith('.csv'):
-            import pandas as pd
             df = pd.read_csv(uploaded_file)
             st.write("File content:")
             st.dataframe(df)
         elif uploaded_file.name.endswith('.xlsx'):
-            import pandas as pd
             df = pd.read_excel(uploaded_file)
             st.write("File content:")
             st.dataframe(df)
