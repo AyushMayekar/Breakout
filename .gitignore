@@ -1,0 +1,5 @@
+.venv/
+.env
+.pycache/
+.streamlit/
+BreakoutAI Assessment_ AI Agent .pdf
