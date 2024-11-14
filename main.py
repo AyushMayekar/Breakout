@@ -298,7 +298,7 @@ def contact():
 
 
 # Sidebar
-st.sidebar.title("Navigation")
+st.sidebar.title("🧭 Navigation")
 
 if "page" not in st.session_state:
     st.session_state["page"] = "Guide"  # Default page
