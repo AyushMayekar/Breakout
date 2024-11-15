@@ -120,6 +120,12 @@ Ensure that each key is set up correctly and that your `.env` file is in the roo
 
 ---
 
+## Video Walkthrough
+
+here 
+
+---
+
 ## Optional Features
 
 This tool includes several additional features to enhance its functionality and user experience:

@@ -7,42 +7,95 @@ from dotenv import load_dotenv
 import os
 import requests
 from groq import Groq
+from langchain_groq import ChatGroq
+from langchain.prompts import PromptTemplate
+from langchain.schema import Document
+from langchain_ollama import OllamaEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.output_parsers import StrOutputParser
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.retrieval import create_retrieval_chain
 
 # Loading Credentials 
 load_dotenv()
 SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
 SERPAPI_KEY = os.getenv('SERPAPI_KEY')
-client = Groq(
-    api_key=os.environ.get("GROQ_API_KEY"),
-)
+GROQ_API_KEY = os.environ['GROQ_API_KEY']
 # print(SERVICE_ACCOUNT_FILE)
 
 
-# LLM integration 
-def llm_integration(prompt, gathered_data) :
-    # Merging all the web scraped data
-    data_summary = "\n".join([f"{item['title']}: {item['snippet']} (Link: {item['link']})" for item in gathered_data])
+# # LLM integration 
+# def llm_integration(prompt, gathered_data) :
+#     # Merging all the web scraped data
+#     data_summary = "\n".join([f"{item['title']}: {item['snippet']} (Link: {item['link']})" for item in gathered_data])
 
-    # Create a structured prompt for the LLM
-    full_prompt = f"Prompt:{prompt}\n\nHere is the relevant information gathered from the web:\n{data_summary}\n\nPlease provide a concise upto the mark (mostly a one word or number) answer based on the above prompt and provided information."
+#     # Create a structured prompt for the LLM
+#     full_prompt = f"Prompt:{prompt}\n\nHere is the relevant information gathered from the web:\n{data_summary}\n\nPlease provide a concise upto the mark (mostly a one word or number) answer based on the above prompt and provided information."
     
-    try:
-        # Send prompt to OpenAI's API and get a response
-        response = client.chat.completions.create(
-            messages=[
-        {
-            "role": "user",
-            "content": full_prompt,
-        }
-        ],
-        model="llama3-8b-8192"
-        )
+#     try:
+#         # Send prompt to OpenAI's API and get a response
+#         response = client.chat.completions.create(
+#             messages=[
+#         {
+#             "role": "user",
+#             "content": full_prompt,
+#         }
+#         ],
+#         model="llama3-8b-8192"
+#         )
         
-        # Extract the response text
-        answer = response.choices[0].message.content
-        return answer
-    except Exception as e:
-        return f"Error processing with LLM: {e}"
+#         # Extract the response text
+#         answer = response.choices[0].message.content
+#         return answer
+#     except Exception as e:
+#         return f"Error processing with LLM: {e}"
+
+# rag integration
+def rag_integration(query, gathered_data):
+    # Merging all the web scraped data
+    # data_summary = "\n".join([f"{item['title']}: {item['snippet']} (Link: {item['link']})" for item in gathered_data])
+
+    # documenting the web search results
+    documents = [
+        Document(    page_content=f"{item['snippet']} (Link: {item['link']})", 
+        metadata={"title": item["title"]})
+        for item in gathered_data
+        ]
+    
+    # initializing ollama embeddings
+    embeddings = OllamaEmbeddings(model='nomic-embed-text')
+
+    # storing data to the vector store
+    vector_store = FAISS.from_documents(documents, embeddings)
+
+    # Defining the LLM
+    llm = ChatGroq(groq_api_key = GROQ_API_KEY, 
+                model_name = 'llama3-8b-8192')
+
+    # Defining Prompt
+    full_prompt = PromptTemplate.from_template(
+        template="""Prompt:{input}\n\nHere is the relevant information gathered from the web:\n
+                                            <Context>
+                                            {context}
+                                            </Context>\n\n
+                                            Please provide a concise upto the mark (mostly a one word or number) answer based on the above prompt and provided information.""")
+    # print(full_prompt)
+
+    # Creating a document chain
+    doc_chain = create_stuff_documents_chain(llm = llm, prompt = full_prompt, output_parser= StrOutputParser())
+
+    # Defining the vector store as retriever
+    retriever = vector_store.as_retriever( search_type = "similarity",
+    search_kwargs = { "k": 10 })
+
+    # Creating a retrieval chain
+    retrieval_chain = create_retrieval_chain(retriever, doc_chain)
+
+    # invoking retrieval chain
+    response = retrieval_chain.invoke({"input":query})
+
+    return response['answer']
+
 
 # Retrieve Web Data
 def retrieve_web_data(query):
@@ -142,8 +195,17 @@ def playground():
             st.warning("Unsupported file format.")
 
     if selected_columns:
-        st.write("### Enter Your Prompt")
-        prompt = st.text_area("Describe what you want to do with the selected columns.", height=150, placeholder='Eg. Find the company size of given company, Find me the exact location of the company headquaters...')
+        st.write("### Define Your Custom Prompt")
+        st.write("Use `{company}` as a placeholder for the company name or selected entity in your prompt.")
+        
+        # Text input for custom prompt
+        prompt = st.text_input(
+                "Enter your custom prompt with placeholders.",
+                placeholder="Get me the email address of {company}"
+            )
+
+        # Instructions  
+        st.write("Example: `Get me the email address of {company}` or `Find the location of {company}'s headquarters.`")
         
         if st.button("Process Prompt"):
             if prompt:
@@ -151,10 +213,10 @@ def playground():
                     gathered_data = []
                     llm_responses = [] 
                     for item in selected_data[selected_columns[0]].dropna().unique():
-                        query = f"{item}: {prompt}"
+                        query = prompt.format(company = item)
                         results = retrieve_web_data(query)
                         gathered_data.extend(results)
-                        llm_result = llm_integration(query, gathered_data)
+                        llm_result = rag_integration(query, gathered_data)
                         llm_responses.append({"Company": item, prompt: llm_result})
                     result_data = pd.DataFrame(llm_responses)
                     st.write("### LLM Results")
