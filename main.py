@@ -6,7 +6,6 @@ import gspread
 from dotenv import load_dotenv
 import os
 import requests
-from groq import Groq
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
@@ -16,6 +15,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 
+
 # Loading Credentials 
 load_dotenv()
 SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
@@ -24,103 +24,86 @@ GROQ_API_KEY = os.environ['GROQ_API_KEY']
 # print(SERVICE_ACCOUNT_FILE)
 
 
-# # LLM integration 
-# def llm_integration(prompt, gathered_data) :
-#     # Merging all the web scraped data
-#     data_summary = "\n".join([f"{item['title']}: {item['snippet']} (Link: {item['link']})" for item in gathered_data])
-
-#     # Create a structured prompt for the LLM
-#     full_prompt = f"Prompt:{prompt}\n\nHere is the relevant information gathered from the web:\n{data_summary}\n\nPlease provide a concise upto the mark (mostly a one word or number) answer based on the above prompt and provided information."
-    
-#     try:
-#         # Send prompt to OpenAI's API and get a response
-#         response = client.chat.completions.create(
-#             messages=[
-#         {
-#             "role": "user",
-#             "content": full_prompt,
-#         }
-#         ],
-#         model="llama3-8b-8192"
-#         )
-        
-#         # Extract the response text
-#         answer = response.choices[0].message.content
-#         return answer
-#     except Exception as e:
-#         return f"Error processing with LLM: {e}"
-
 # rag integration
 def rag_integration(query, gathered_data):
-    # Merging all the web scraped data
-    # data_summary = "\n".join([f"{item['title']}: {item['snippet']} (Link: {item['link']})" for item in gathered_data])
-
-    # documenting the web search results
-    documents = [
-        Document(    page_content=f"{item['snippet']} (Link: {item['link']})", 
-        metadata={"title": item["title"]})
-        for item in gathered_data
-        ]
+    try:
+        # documenting the web search results
+        documents = [
+            Document(    page_content=f"{item['snippet']} (Link: {item['link']})", 
+            metadata={"title": item["title"]})
+            for item in gathered_data
+            ]
     
-    # initializing ollama embeddings
-    embeddings = OllamaEmbeddings(model='nomic-embed-text')
+        # initializing ollama embeddings
+        embeddings = OllamaEmbeddings(model='nomic-embed-text')
 
-    # storing data to the vector store
-    vector_store = FAISS.from_documents(documents, embeddings)
+        # storing data to the vector store
+        vector_store = FAISS.from_documents(documents, embeddings)
 
-    # Defining the LLM
-    llm = ChatGroq(groq_api_key = GROQ_API_KEY, 
-                model_name = 'llama3-8b-8192')
+        # Defining the LLM
+        llm = ChatGroq(groq_api_key = GROQ_API_KEY, 
+                    model_name = 'llama3-8b-8192')
 
-    # Defining Prompt
-    full_prompt = PromptTemplate.from_template(
-        template="""Prompt:{input}\n\nHere is the relevant information gathered from the web:\n
+        # Defining Prompt
+        full_prompt = PromptTemplate.from_template(
+            template="""Prompt:{input}\n\nHere is the relevant information gathered from the web:\n
                                             <Context>
                                             {context}
                                             </Context>\n\n
                                             Please provide a concise upto the mark (mostly a one word or number) answer based on the above prompt and provided information.""")
-    # print(full_prompt)
 
-    # Creating a document chain
-    doc_chain = create_stuff_documents_chain(llm = llm, prompt = full_prompt, output_parser= StrOutputParser())
+        # Creating a document chain
+        doc_chain = create_stuff_documents_chain(llm = llm, prompt = full_prompt, output_parser= StrOutputParser())
 
-    # Defining the vector store as retriever
-    retriever = vector_store.as_retriever( search_type = "similarity",
-    search_kwargs = { "k": 10 })
+        # Defining the vector store as retriever
+        retriever = vector_store.as_retriever( search_type = "similarity",
+        search_kwargs = { "k": 10 })
 
-    # Creating a retrieval chain
-    retrieval_chain = create_retrieval_chain(retriever, doc_chain)
+        # Creating a retrieval chain
+        retrieval_chain = create_retrieval_chain(retriever, doc_chain)
 
-    # invoking retrieval chain
-    response = retrieval_chain.invoke({"input":query})
+        # invoking retrieval chain
+        response = retrieval_chain.invoke({"input":query})
 
-    return response['answer']
-
+        return response['answer']
+    except Exception as e:
+        st.error(f"An error occurred during RAG integration: {str(e)}")
+        return None
 
 # Retrieve Web Data
 def retrieve_web_data(query):
-    url = f"https://serpapi.com/search.json"
-    params = {
-        "q": query,
-        "api_key": SERPAPI_KEY,
-        "num": 3
-    }
-    response = requests.get(url, params=params)
-    if response.status_code == 200:
-        return response.json().get("organic_results", [])
-    else:
-        return f"Error retrieving data: {response.status_code}"
+    try:
+        url = f"https://serpapi.com/search.json"
+        params = {
+            "q": query,
+            "api_key": SERPAPI_KEY,
+            "num": 3
+        }
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            return response.json().get("organic_results", [])
+        else:
+            return f"Error retrieving data: {response.status_code}"
+    except Exception as e :
+        st.error(f"An error occurred during web data retrieval: {str(e)}")
+        return None
+
+
 
 # Implementing google sheet integration
 def get_gspread_client():
-    credentials = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ],
-    )
-    return gspread.authorize(credentials)
+    try:
+        credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
+        return gspread.authorize(credentials)
+    except Exception as e :
+        st.error(f"An error occurred during Google Sheets integration: {str(e)}")
+        return None
 
 
 # Main Logic Page
@@ -143,14 +126,17 @@ def playground():
         try:
             # Initialize Google Sheets client
             client = get_gspread_client()
+
             # Open the Google Sheet by URL
             sheet = client.open_by_url(sheet_url)
+
             # Get list of worksheets (tabs) in the Google Sheet
             worksheet_list = [ws.title for ws in sheet.worksheets()]
             
             # Select a worksheet from a dropdown
             worksheet_name = st.selectbox("Select Worksheet", worksheet_list)
             worksheet = sheet.worksheet(worksheet_name)
+
             # Get all records from the selected worksheet as a DataFrame
             data = worksheet.get_all_records()
             if data:
@@ -158,6 +144,7 @@ def playground():
                 st.write("Data from Google Sheet:")
                 st.dataframe(df)
                 selected_columns = st.multiselect("Select columns for processing", options=df.columns.tolist())
+
                 if selected_columns:
                     st.write("Selected columns for further processing:")
                     selected_data = df[selected_columns]
@@ -178,6 +165,7 @@ def playground():
             df = pd.read_csv(uploaded_file)
             st.write("File content:")
             st.dataframe(df)
+
         elif uploaded_file.name.endswith('.xlsx'):
             sheet_names = pd.ExcelFile(uploaded_file).sheet_names
             sheet = st.selectbox("Select a sheet", sheet_names)
@@ -196,16 +184,16 @@ def playground():
 
     if selected_columns:
         st.write("### Define Your Custom Prompt")
-        st.write("Use `{company}` as a placeholder for the company name or selected entity in your prompt.")
+        st.write("Use `{object}` as a placeholder for the company name or selected entity(eg. country, website, animal, etc) in your prompt.")
         
         # Text input for custom prompt
         prompt = st.text_input(
                 "Enter your custom prompt with placeholders.",
-                placeholder="Get me the email address of {company}"
+                placeholder="Get me the email address of {object}"
             )
 
         # Instructions  
-        st.write("Example: `Get me the email address of {company}` or `Find the location of {company}'s headquarters.`")
+        st.write("Example: `What continent does this {object} belong to? ` or `Find the location of {object}'s headquarters.`")
         
         if st.button("Process Prompt"):
             if prompt:
@@ -213,7 +201,7 @@ def playground():
                     gathered_data = []
                     llm_responses = [] 
                     for item in selected_data[selected_columns[0]].dropna().unique():
-                        query = prompt.format(company = item)
+                        query = prompt.format(object = item)
                         results = retrieve_web_data(query)
                         gathered_data.extend(results)
                         llm_result = rag_integration(query, gathered_data)
@@ -243,8 +231,8 @@ def guide():
     # Introduction
     st.subheader("Welcome to the Tool Guide")
     st.write("""
-        This tool is designed to make data analysis, information retrieval, and language model (LLM) interaction seamless. 
-        With this tool, you can easily upload datasets, retrieve valuable information from the web, and generate insights using advanced LLMs.
+        This tool is designed to make data analysis, information retrieval, and interaction with advanced language models seamless. 
+        With this tool, you can upload datasets, retrieve valuable information from the web, and generate insights using RAG (Retrieval-Augmented Generation).
     """)
 
     # Walkthrough
@@ -254,91 +242,89 @@ def guide():
     # Step 1: Upload Data
     st.markdown("### 1. Uploading Your Data")
     st.write("""
-        - Go to the **Playground** section.
-        - Choose a file to upload by clicking the **'Choose a file'** button. Supported file formats include:
-            - **CSV**: Comma-separated values, a standard format for data files.
-            - **Excel (.xlsx)**: Allows selecting a specific worksheet.
-        - Or, connect your **Google Sheet** by entering its URL in the provided field.
+        - Navigate to the **Playground** section.
+        - **Upload a file**: Supported formats are **CSV** and **Excel (.xlsx)**. You can select specific sheets from Excel files.
+        - **Connect Google Sheets**: Enter your Google Sheet's URL. Select the worksheet from the dropdown.
     """)
 
-    # Step 2: Selecting Columns
+    # Step 2: Selecting Columns for Processing
     st.markdown("### 2. Selecting Columns for Processing")
     st.write("""
-        - Once your file is uploaded or Google Sheet is connected, you’ll see your data displayed.
-        - Use the **column selection tool** to choose specific columns for further processing. 
-        - This step helps you focus on the relevant data points, saving time and improving accuracy in subsequent steps.
+        - Once your file or Google Sheet is loaded, the data will be displayed.
+        - Use the **column selection tool** to choose relevant columns for processing.
     """)
 
-    # Step 3: Entering a Prompt
+    # Step 3: Entering a Custom Prompt
     st.markdown("### 3. Entering a Prompt for Analysis")
     st.write("""
-        - After selecting columns, you’ll see a **text input area** to enter a prompt.
-        - This prompt directs the tool on what information to retrieve from the web or analyze using the LLM.
-        - Examples of prompts:
-            - "Find the headquarter location of each company."
-            - "Get the latest news related to each listed company."
-            - "Fetch employee count or company size for each company."
+        - Enter a **custom prompt** in the provided input box. Use placeholders such as `{object}` to represent dynamic entities.
+        - **Examples**:
+            - "What is the headquarter location of {object}?"
+            - "What continent does this {object} belong to?"
     """)
 
-    # Step 4: Processing Prompt and Generating Results
-    st.markdown("### 4. Processing and Retrieving Results")
+    # Step 4: Processing and Generating Results
+    st.markdown("### 4. Processing and Generating Results")
     st.write("""
-        - Click on **'Process Prompt'** to start the information retrieval process.
-        - The tool will retrieve data from the web based on your prompt and apply the LLM to get precise, actionable answers.
-        - The results will be displayed in a structured format and include a **Download as CSV** option for easy export.
+        - Click **"Process Prompt"** to retrieve data and generate insights.
+        - The tool performs the following steps:
+            - **Web Retrieval**: Fetches real-time information using **SerpAPI**.
+            - **RAG Integration**: Stores data in a vector database using **FAISS** and generates responses using **ChatGroq**.
+        - Results are displayed in a table format and can be downloaded as a CSV file.
     """)
 
-    # Step 5: Downloading the Results
+    # Step 5: Downloading Results
     st.markdown("### 5. Downloading Results")
     st.write("""
-        - After results are generated, use the **Download button** to save the insights as a CSV file.
-        - This file will include the original data and the generated insights, which you can integrate into further analysis or reports.
+        - After processing, use the **Download as CSV** button to save the results for external use.
     """)
 
     # Features and Functionalities
     st.subheader("Features and Functionalities")
     st.markdown("""
-    - **Data Upload and Integration**: Upload CSV or Excel files or link to a Google Sheet for seamless data access.
-    - **Customizable Analysis**: Select specific columns and enter targeted prompts to obtain tailored insights.
-    - **Web Data Retrieval**: Uses SerpAPI to pull information from the web based on user queries.
-    - **LLM Integration**: Integrates with a powerful LLM (Llama3) to generate concise, precise answers based on web-scraped data.
-    - **Downloadable Results**: Export analysis as a CSV file for easy integration with other tools.
+    - **Dynamic Prompt Creation**: Define custom prompts with placeholders for flexible queries.
+    - **Real-Time Data Retrieval**: Fetch information directly from the web using **SerpAPI**.
+    - **RAG Integration**: Combines vector store capabilities with LLMs for accurate and concise responses.
+    - **Error Handling**: Built-in alerts for common issues like invalid URLs or failed API calls.
     """)
 
     # Technology Used
     st.subheader("Technologies Used")
-    st.write("This tool leverages cutting-edge technologies to deliver a smooth, effective experience:")
+    st.write("This tool leverages the following technologies:")
     st.markdown("""
-    - **Streamlit**: A powerful framework for building interactive web applications in Python.
-    - **Pandas**: For data manipulation, reading, and structuring CSV and Excel files.
-    - **Google Sheets API**: For integrating Google Sheets as an alternative to CSV and Excel.
-    - **SerpAPI**: For real-time web data retrieval based on user queries.
-    - **Groq and Llama3 Model**: A large language model for analyzing data and generating insights based on custom prompts.
+    - **Streamlit**: For an interactive and user-friendly web interface.
+    - **Pandas**: For data manipulation and visualization.
+    - **Google Sheets API**: To fetch data from Google Sheets.
+    - **SerpAPI**: For real-time web search and retrieval.
+    - **LangChain**:
+        - **Ollama Embeddings**: To encode text into high-dimensional vectors.
+        - **FAISS**: For efficient similarity search on vectorized data.
+        - **ChatGroq**: A powerful large language model for text generation and insights.
     """)
 
-    # How This Tool is Useful in the Industry
+    # Industry Applications
     st.subheader("Industry Applications and Use Cases")
     st.write("""
-        This tool is versatile and can be applied across various industries for data analysis and insight generation. Some potential applications include:
+        This tool is applicable across various domains, including:
     """)
     st.markdown("""
-    - **Market Research**: Retrieve and analyze competitor information, trends, and insights in a structured format.
-    - **Customer Analysis**: Quickly gather customer reviews, engagement data, and public sentiment for listed companies.
-    - **Human Resources**: Analyze employee-related data such as company size or headquarter locations for potential recruiting or partnerships.
-    - **Data Enrichment**: Use the tool to enrich raw data with web-sourced information, providing added context to datasets.
+    1. **Market Research**: Retrieve real-time data on competitors, trends, and insights.
+    2. **Customer Insights**: Analyze customer reviews, public sentiment, and feedback.
+    3. **Recruitment**: Gather company-related data like employee size and headquarters location.
+    4. **Data Enrichment**: Augment datasets with web-sourced information for richer context.
     """)
 
-    # Support Section
+    # Support and Resources
     st.subheader("Support and Resources")
-    st.write("Need help? Contact us through the **Contact Us** page or refer to the following resources:")
+    st.write("Need help? Refer to the following resources or use the **Contact Us** section:")
     st.markdown("""
-    - **SerpAPI Documentation**: For details on the web scraping capabilities, see the [SerpAPI documentation](https://serpapi.com/).
-    - **Google Sheets API Guide**: Learn how to integrate Google Sheets [here](https://developers.google.com/sheets/api/guides/concepts).
-    - **Streamlit Guide**: For more information on Streamlit features, see the [Streamlit documentation](https://docs.streamlit.io/).
+    - **[SerpAPI Documentation](https://serpapi.com/)**: Learn about the web search API.
+    - **[Google Sheets API Guide](https://developers.google.com/sheets/api/guides/concepts)**: For integrating Google Sheets.
+    - **[Streamlit Documentation](https://docs.streamlit.io/)**: For creating interactive web applications.
     """)
 
     # Closing Remark
-    st.write("We hope this guide helps you get the most out of the tool. Happy analyzing!")
+    st.write("We hope this guide helps you get the most out of the tool. Happy analyzing! 🎉")
 
 
 # Contact Us Page
@@ -370,6 +356,7 @@ if st.sidebar.button("📘 Guide"):
     st.session_state["page"] = "Guide"
 if st.sidebar.button("📧 Contact Us"):
     st.session_state["page"] = "Contact Us"
+
 
 # Page selection based on session state
 if st.session_state["page"] == "Playground":
