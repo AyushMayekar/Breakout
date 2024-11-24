@@ -11,7 +11,7 @@ This tool is designed to streamline data analysis and insights generation by int
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/AyushMayekar/Breakout
+git clone https://github.com/AyushMayekar/Data_Insight_and_Analysis_Tool
 ```
 
 ### 2. Install Dependencies
@@ -98,7 +98,7 @@ Use the **Download as CSV** button to save the generated results for further use
 
 ## Video Walkthrough
 
-[Click here to watch the video](https://raw.githubusercontent.com/AyushMayekar/Breakout/main/Breakout.mp4)
+[![Watch the video](https://img.youtube.com/vi/vBYs6UqH4R4/maxresdefault.jpg)](https://youtu.be/vBYs6UqH4R4)
 ---
 
 ## API Keys and Environment Variables
